@@ -1,0 +1,480 @@
+# Program to analyze 96-well fluorescence binding titrations
+# 5-23-2019
+
+# Import Packages
+import tkinter as tk
+from tkinter import ttk
+from tkinter import filedialog
+from tkinter import *
+from scipy.interpolate import *
+from scipy.optimize import curve_fit
+
+
+# Use these to display plots in tkinter window
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.pyplot import * 
+
+import numpy as np
+from numpy import exp, linspace, random
+import pandas as pd
+import os.path
+import glob, os
+import os.path
+import datetime
+from IPython.display import display, clear_output
+# import cv2
+# import tkMessageBox
+from tkinter import messagebox
+
+
+
+class Kd:
+    
+    def __init__(self, master):
+        
+        root.title("Velocity Sciences Binding Constant Calculator")
+        root.geometry('650x700+500+300')
+        self.COLOR = "alice blue"
+        root.config(bg = self.COLOR)
+
+        # Create tabs in root   
+        notebook = ttk.Notebook(master, width = 600, height = 600)
+        notebook.grid()
+        self.dataInput = Frame(notebook, background = 'alice blue')
+        self.dataOutput = Frame(notebook, background = 'alice blue')
+
+        notebook.add(self.dataInput, text = "Calculate Binding Constants")
+        notebook.add(self.dataOutput, text = "View Titration Curves")
+
+        # Define fonts 
+        # Font for labels
+        self.font1 = ('times', 18)
+        self.font2 = ('times', 14)
+
+        # Font for buttons
+        self.style = ttk.Style(master)
+        self.style.configure("TButton", font = ('times', 18), foreground = "red", highlightbackground = 'red')
+
+        # Create label for selecting files for analysis
+        self.selectFileLabel = ttk.Label(self.dataInput, text = 'Select Files For Analysis', background = 'blue', foreground = "blue", relief = RAISED, anchor = CENTER, width = 25, font = self.font1).grid(row = 0, column = 0, columnspan = 1, padx = 5, pady = (15, 5))
+
+        # Create button that calls function for selecting files for analysis
+        self.openFileButton = ttk.Button(self.dataInput, text = 'Browse', style = "TButton", command = lambda: self.select_files())
+        self.openFileButton.grid(row = 1, column = 0, pady = (1, 5))
+
+        # Create entry box to display files selected for analysis
+        self.fileImport = StringVar()
+        self.import_label = ttk.Label(self.dataInput, text = "Files Selected:", background = 'blue', foreground = "blue", relief = RAISED, font = self.font2, anchor = W, width = 25)
+        self.import_entry = ttk.Entry(self.dataInput, textvariable = self.fileImport)
+        self.import_label.grid(row = 2, column = 0, columnspan = 1, pady = (5, 3))
+        self.import_entry.grid(row = 3, column = 0, columnspan = 1, pady = 5)
+        self.fileImport.set('')
+
+        # Create label for selecting folder to export results
+        self.selectFolder = ttk.Label(self.dataInput, text = 'Select Folder For Results', background = 'blue', foreground = "blue", relief = RAISED, anchor = CENTER, width = 25, font = self.font1).grid(row = 0, column = 1, columnspan = 1, padx = 5, pady = (15, 5))
+
+        # Select folder with mouse click and populate fileExport entry box
+        self.chooseFolder = ttk.Button(self.dataInput, text = 'Browse', style = "TButton", command = lambda: self.fileExport.set(filedialog.askdirectory(initialdir = "/home/pi/Documents/")))
+        self.chooseFolder.grid(row = 1, column = 1, columnspan = 1, pady = (1, 5))
+
+        # Create entry box to enter a folder where results will be exported
+        self.fileExport = StringVar()
+        self.export_label = ttk.Label(self.dataInput, text = "Folder Selected:", background = 'blue', foreground = "blue", relief = RAISED, font = self.font2, anchor = W, width = 25)
+        self.export_entry = ttk.Entry(self.dataInput, textvariable = self.fileExport)
+        self.export_label.grid(row = 2, column = 1, columnspan = 1, pady = (5, 3))
+        self.export_entry.grid(row = 3, column = 1, columnspan = 1, pady = 5)
+        self.fileExport.set('')
+
+        # Create label for entering protein and NGA concentratons
+        self.concLable = ttk.Label(self.dataInput, text = 'Enter Reagent Concentrations', background = 'blue', foreground = "blue", relief = RAISED, anchor = CENTER, width = 25, font = self.font1).grid(row = 4, column = 0, columnspan = 2, padx = 5, pady = (15, 5))
+
+        # Create entry boxes for NGA Concentrations
+        self.NGA1 = IntVar()
+        self.NGA1_label = ttk.Label(self.dataInput, text = 'Enter Largest NGA Concentration in nM on Left, Smallest on Right', background = 'blue', foreground = "blue", relief = RAISED, anchor = CENTER, width = 55, font = self.font2)
+        self.NGA1_entry = ttk.Entry(self.dataInput, width = 6, textvariable = self.NGA1)
+        self.NGA1_label.grid(row = 5, column = 0, columnspan = 2, pady = (10, 5), padx = 3)
+        self.NGA1_entry.grid(row = 6, column = 0, pady = (1, 5), padx = (3, 0), sticky = 'w')
+        self.NGA1.set(400)
+
+        # Create entry boxes for NGA Concentrations
+        self.NGA2 = DoubleVar()
+        self.NGA2_entry = ttk.Entry(self.dataInput, width = 6, textvariable = self.NGA2)
+        self.NGA2_entry.grid(row = 6, column = 0, pady = (1, 5), padx = 0)
+        self.NGA2.set(200)
+
+        self.NGA3 = DoubleVar()
+        self.NGA3_entry = ttk.Entry(self.dataInput, width = 6, textvariable = self.NGA3)
+        self.NGA3_entry.grid(row = 6, column = 0, pady = (1, 5), padx = (0, 8), sticky = 'e')
+        self.NGA3.set(100)
+
+        self.NGA4 = DoubleVar()
+        self.NGA4_entry = ttk.Entry(self.dataInput, width = 6, textvariable = self.NGA4)
+        self.NGA4_entry.grid(row = 6, column = 1, pady = (1, 5), padx = (8, 0), sticky = 'w')
+        self.NGA4.set(50.0)
+
+        self.NGA5 = DoubleVar()
+        self.NGA5_entry = ttk.Entry(self.dataInput, width = 6, textvariable = self.NGA5)
+        self.NGA5_entry.grid(row = 6, column = 1, pady = (1, 5), padx = (0))
+        self.NGA5.set(25.0)
+
+        self.NGA6 = DoubleVar()
+        self.NGA6_entry = ttk.Entry(self.dataInput, width = 6, textvariable = self.NGA6)
+        self.NGA6_entry.grid(row = 6, column = 1, pady = (1, 5), padx = (0, 8), sticky = 'e')
+        self.NGA6.set(12.50)
+
+        self.NGA7 = DoubleVar()
+        self.NGA7_entry = ttk.Entry(self.dataInput, width = 6, textvariable = self.NGA7)
+        self.NGA7_entry.grid(row = 6, column = 2, pady = (1, 5), padx = (8, 0), sticky = 'w')
+        self.NGA7.set(6.25)
+
+        # Create entry box for protein concentration
+        self.proteinConc = IntVar()
+        self.proCon_label = ttk.Label(self.dataInput, text = 'Enter Protein Conc (nM):', background = 'blue', foreground = "blue", relief = RAISED, anchor = W, width = 25, font = self.font2)
+        self.proCon_entry = ttk.Entry(self.dataInput, width = 10, textvariable = self.proteinConc)
+        self.proCon_label.grid(row = 7, column = 0, columnspan = 2, pady = (15, 5), padx = 3)
+        self.proCon_entry.grid(row = 8, column = 0, columnspan = 2, pady = (1, 5), padx = 3)
+        self.proteinConc.set(60)
+
+        # Create entry boxes for number of columns on the plate to analyze
+        # Create label 
+        self.columns = ttk.Label(self.dataInput, text = 'Select Plate Columns For Analysis ', background = 'blue', foreground = "blue", relief = RAISED, anchor = CENTER, width = 35, font = self.font1).grid(row = 9, column = 0, columnspan = 2, padx = 5, pady = (25, 5))
+
+        # Create entry boxes
+        self.starting_column = IntVar()
+        self.starting_column_label = ttk.Label(self.dataInput, text = 'First Column', background = 'blue', foreground = "blue", relief = RAISED, anchor = CENTER, width = 12, font = self.font1)
+        self.starting_column_entry = ttk.Entry(self.dataInput, width = 3, textvariable = self.starting_column)
+        self.starting_column_label.grid(row = 10, column = 0, columnspan = 1, pady = (10, 1), padx = 3, sticky = 'e')
+        self.starting_column_entry.grid(row = 11, column = 0, pady = (1, 10), padx = (3, 5), sticky = 'e')
+        self.starting_column.set(1)
+
+        # Create entry boxes
+        self.ending_column = IntVar()
+        self.ending_column_label = ttk.Label(self.dataInput, text = 'Last Column', background = 'blue', foreground = "blue", relief = RAISED, anchor = CENTER, width = 12, font = self.font1)
+        self.ending_column_entry = ttk.Entry(self.dataInput, width = 3, textvariable = self.ending_column)
+        self.ending_column_label.grid(row = 10, column = 1, columnspan = 1, pady = (10, 1), padx = 3, sticky = 'w')
+        self.ending_column_entry.grid(row = 11, column = 1, pady = (1, 10), padx = (3, 5), sticky = 'w')
+        self.ending_column.set(12)
+
+        # Create checkbox to generate pdf report
+        self.var = IntVar()
+        self.checkButton = Checkbutton(self.dataInput, text = "Generate PDF Report", variable = self.var, background = 'alice blue', 
+            foreground = "blue", relief = RAISED, font = self.font1).grid(row = 12, column = 0, columnspan = 1, pady = (5, 5))
+
+        # Create checkbox to generate csv report
+        self.varCSV = IntVar()
+        self.checkButton = Checkbutton(self.dataInput, text = "Export CSV File", variable = self.varCSV, background = 'alice blue', 
+            foreground = "blue", relief = RAISED, font = self.font1).grid(row = 12, column = 1, columnspan = 1, pady = (5, 5))
+ 
+        # Button to run calculation and generate plot
+        self.calc = ttk.Button(self.dataInput, text = 'Click Here For Kd', style = "TButton", command = lambda: self.plot_setup())
+        self.calc.grid(row = 13, column = 0, columnspan = 2, pady = (10, 3))
+
+# Function to select multiple csv files for analysis and populate entry box
+# Called from openFileButton above
+
+    def select_files(self):
+        # Select files
+        self.files_selected = filedialog.askopenfilenames(parent = root, defaultextension = '.csv')
+        # print (self.files_selected)
+        # Create list for file names
+        self.names = []
+        # Extract file names for population in entry box
+        for i in self.files_selected:
+            self.file_names = (os.path.basename(i))
+            # print(file_names)
+            # Append name to list
+            self.names.append(self.file_names)
+        self.fileImport.set(self.names)
+
+# Create grid for plots in dataOutput tab
+# Plots are generated in plot() function below
+
+    def plot_setup(self):
+        # Create a grid for displaying plots in tkinter dataOoutput tab
+        self.graph1 = Figure(figsize = (5.2,5.2))
+        self.canvas1 = FigureCanvasTkAgg(self.graph1, master = self.dataOutput)
+        self.canvas1.get_tk_widget().grid(row = 0, column = 0, pady = 20, padx = 30, ipadx = 20)
+        matplotlib.rc('xtick', labelsize = 8) 
+        matplotlib.rc('ytick', labelsize = 8)
+        
+        
+        # Call function to perform calculations 
+        self.file_check()
+
+    # Make sure files have been selected
+    # Note try/except AttributeError only works once. As soon as a file has been chosen once try thinks the box is 
+    # full even when it isn't because the attributeerror is only thrown once.
+    def file_check(self):
+        if len(self.fileImport.get()) == 0: 
+            self.no_file_selected()
+            
+        else:
+            self.run_calculation()
+        
+        
+   # Run Kd calculation, plot, and export plots to pdf files
+    def run_calculation(self):
+        
+        # Create a counter for the plot position in the tkinter dataOutput frame
+        self.plot_number = 1
+        
+        try: 
+            self.fileImport.get()
+            
+            # Loop through names list, read in csv file, and create dataframe
+            for f in self.files_selected:
+                
+                # Close plots from previous file
+                plt.close('all')
+                clear_output()
+                
+                # Extract the filename from import files for use in generating an export pdf file name below
+                self.output_file_name = (os.path.basename(f))
+                # print('output file name:', self.output_file_name)
+                
+                # Create df from csv files
+                self.assay_df = pd.read_csv(f, names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'])
+                # print(self.assay_df)
+                
+                # Extract last row of df, which is the background binding fluorescence
+                self.background = self.assay_df.iloc[7]
+                # Subract each row of every column from the column's corresponding background fluorescence
+                self.assay_subtracted_array = self.assay_df.iloc[0:7, :].apply(lambda x: (x - self.background), axis = 1).values
+                # Convert array to a new df
+                self.assay_subtracted_df = pd.DataFrame(self.assay_subtracted_array, columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'])
+        
+                # Create an empty dataframe for calculated parameters (Kd, Bmax) to be added below as dictionary if self.varCSV box is checked
+                self.fit_params_df = pd.DataFrame()
+            
+                # Loop to analyze each column 
+                # Start a column number counter based upon starting_column entry box
+                # (-1 because python columns start at 0 so we need to shift 1-12 entered by user to 0-11)
+                self.column_position = self.starting_column.get() - 1
+        
+                # Analyze columns until the number in ending_columns entry box is reached
+                while self.column_position <= self.ending_column.get() - 1: 
+                    # Get x and y values 
+                    self.y = self.assay_subtracted_df.iloc[:, self.column_position]
+                    self.x = [self.NGA1.get(), self.NGA2.get(), self.NGA3.get(), self.NGA4.get(), self.NGA5.get(), self.NGA6.get(), self.NGA7.get()]
+                    # print (self.x)
+                    # print (self.y)
+       
+                    # Fit to non-ligand depletion equation (equation shown in binding_constant function below)
+                    # Initial values for Bmax and Kd
+                    self.init_vals = [2000, 50]  
+                    self.best_vals, self.covar = curve_fit(self.binding_constant, self.x, self.y, p0 = self.init_vals)
+        
+                    # Get Bmax and Kd and their standard errors
+                    # Standard errors are the square roots of the variances (diaganols of covariance matrix)
+                    self.plateau_fluor = round(self.best_vals[0], 1)
+                    self.plateau_fluor_dev = round(self.covar[0,0]**0.5, 1)
+                    print('Bmax = ', self.plateau_fluor,  ' +/- ', self.plateau_fluor_dev)
+                    self.affinity = round(self.best_vals[1], 1)
+                    self.affinity_dev = round(self.covar[1,1]**0.5, 1)
+                    print('Kd = ', self.affinity, ' +/- ', self.affinity_dev)
+                    
+                    # Calculate 95% CI from self.affinity_dev
+                    lowerCI = self.affinity - 1.96*self.affinity_dev
+                    upperCI = self.affinity + 1.96*self.affinity_dev
+                    print(lowerCI, upperCI)
+                    
+                    # Join lowerCI and upperCI into one string for export to csv file
+                    CI = str(lowerCI) + '-' + str(upperCI)
+                
+                    # Get current data and time to put on each output file
+                    self.now = datetime.datetime.now()
+            
+                    # Generate plot
+                    # Draw points
+                    plt.plot(self.x, self.y, 'o', label = 'Data Points')
+        
+                    # Add axis labels
+                    plt.xlabel('[NGA](nM)')
+                    plt.ylabel('RFU')
+        
+                    # Add filename and column name as title
+                    # Get column name (A, B, C...)
+                    self.col_header = self.assay_subtracted_df.columns[self.column_position]
+                    plt.title(self.output_file_name + '-' + self.col_header + '\n' + str(self.now.strftime("%Y-%m-%d %I:%M")))
+        
+                    # Add Bmax, Kd, and R2 to plot 
+                    # Position values are on x and y axis, respectively
+                    # Get ymax so the text position can be adjusted for each plot
+                    self.ymin, self.ymax = plt.gca().get_ylim()
+                    self.y_position = self.ymax*0.67
+                    text(250, self.y_position, 'Kd (nM) = ' + str(self.affinity) + ' +/- ' + str(self.affinity_dev) + 
+                        '\n' + '95% CI = '+ str(lowerCI) + '-' + str(upperCI) + '\n' + 'Bmax = ' + str(self.plateau_fluor) +
+                         ' +/- ' + str(self.plateau_fluor_dev))
+        
+        
+                    # Draw non-ligand depletion fit line
+                    self.x_fit = np.linspace(np.min(self.x), np.max(self.x), 1000)
+                    plot(self.x_fit, self.binding_constant(self.x_fit, self.best_vals[0], self.best_vals[1]), label = 'Fitted function')
+        
+        
+                    # Save a pdf file of the plot if export box is checked by user
+                    if self.var.get(): 
+                    
+                        # Make sure an export path was selected
+                        if self.fileExport.get():
+                            
+                            # Get user-chosen file path 
+                            self.reportPath = self.fileExport.get()
+                            
+                            # Join the filename with column name
+                            self.file_and_column = self.output_file_name + self.col_header
+        
+                            # Join the path and filename 
+                            self.path_and_file = os.path.join(self.reportPath, self.file_and_column)
+                            savefig(self.path_and_file + '.pdf')
+            
+                            # Close plots from previous column
+                            plt.close('all')
+                            clear_output()
+                        
+                        # If export path was not selected, show error message
+                        else:
+                            self.no_export_folder()
+                    
+                    # Increase counter to move to the next column 
+                    self.column_position += 1
+                    
+                    # Call plots to plot in tkinter window
+                    self.plots()
+                
+                    # Save a csv file of calculated parameters for each plate if csv export box is checked by user
+                    # Append params to fit_params_df as dictionary if self.varCSV box is checked
+                    # Part of while loop so every column of the plate gets appended
+                
+                    if self.varCSV.get(): 
+                    
+                        # Make sure an export path was selected
+                        if self.fileExport.get():
+        
+                            # Add fit params to fit_params_df as dictionary
+                            # Create filename by joining the filename with plate column letter
+                            self.sample_name = self.output_file_name + '-' + self.col_header
+                            # Append parameters to df
+                            self.fit_params_df = self.fit_params_df.append({'File': self.sample_name, 'Kd(nM)': self.affinity, 
+                                'Kd Std Error': self.affinity_dev, 'Kd 95% CI': CI, 'Bmax': self.plateau_fluor, 'Bmax Std Error': self.plateau_fluor_dev}, ignore_index=True)
+                        
+                            # Reorder the columns (for some reason they don't appear in the order created)
+                            self.fit_params_df = self.fit_params_df[['File', 'Kd(nM)', 'Kd Std Error', 'Kd 95% CI', 'Bmax', 'Bmax Std Error']]
+                            
+                        # If export path was not selected, show error message
+                        else:
+                            self.no_export_folder()
+                            # Break out of loop so user may select an export path
+                            break
+                                    
+                # Write csv file
+                # Part of the for f in self.files_selected loop so only gets executed after every titration
+                # in a plate has been analyzed. Not part of while loop that analyzes each column of one plate.    
+                
+                # Make sure this only executes if the box is checked
+                if self.varCSV.get():
+                    
+                    # Define reportPath again here (not sure why since it was defined above)
+                    self.reportPath = self.fileExport.get()
+                    
+                    # Create a path and filename for csv file. This one should not include column letter.
+                    self.path_and_name = os.path.join(self.reportPath, self.output_file_name)
+                    
+                    # Check to see if filename already exists
+                    if os.path.isfile(self.path_and_name):
+                        self.file_exists()
+                        
+                    else:
+                        self.export_csv = self.fit_params_df.to_csv(self.path_and_name, index = None, header = True)
+                
+        except TclError:
+            self.empty_entrybox_popupmsg()
+                
+        except AttributeError:
+            self.no_file_selected()
+            
+        
+    # Function for fitting titration data to calculate Bmax and Kd
+    def binding_constant(self, x, Bmax, Kd):
+        return (Bmax*x)/(Kd + x)
+
+    def plots(self):
+        # Display up to 12 plots in dataOutput tab
+        # Plot first 12
+        if self.plot_number <= 12:
+            self.xAxis = self.x
+            self.yAxis = self.y
+            self.a = self.graph1.add_subplot(4, 3, self.plot_number)
+            self.a.scatter(self.xAxis, self.yAxis, color = 'red', s = 7)
+            self.a.set_title(self.col_header, fontsize = 8)
+            self.a.set_xlabel("[NGA](nM)", fontsize = 8)
+            self.a.set_ylabel("RFU", fontsize = 8)
+        
+            # Automatically spread the plots out so axis labels don't overlap   
+            self.graph1.tight_layout()
+        
+            # Draw plots
+            self.canvas1.draw()    
+           
+            # Increase plot position counter so next subplot is in the next position in the frame
+            self.plot_number += 1
+        
+        # If more than 12 titrations were selected (e.g., 2 96-well files), show message, clear existing plots,
+        # and set plot_number back to one to display then next 12 plots
+        else:
+            messagebox.showinfo('Message', 'More than 12 titrations were selected for analysis. Only the last 12 plots will be displayed.')
+            # Clear existing plots (but not the entire canvas!)
+            self.graph1.clf()
+            # Call thirteenth_plot
+            self.thirteenth_plot()
+            
+    # Function for dealing with the thirteenth plot
+    def thirteenth_plot(self):
+        
+        # Set 13th plot to number 1
+        self.plot_number = 1
+        
+        # Send back to plots for plotting. Without this function the thirteenth plot will be lost.
+        self.plots()
+         
+    
+    #----------------------------------------------------------------------------------------------
+    # Error Messages
+    # Functions to pop up a message if any required info is not entered
+    def empty_entrybox_popupmsg(self):
+
+        messagebox.showinfo('Message', 'Please fill in all entry boxes.')
+
+    def no_file_selected(self):
+        
+        messagebox.showinfo('Message', 'Please choose a file to analyze.')
+        
+    def no_export_folder(self):
+       
+        messagebox.showinfo('Message', 'Please choose a folder to export results.')
+        
+        
+    def file_exists(self):
+        
+        result = messagebox.askquestion("File Already Exists", "Would you like to overwrite the existing file?", icon = 'question')
+        
+        if result == 'yes':
+            self.export_csv = self.fit_params_df.to_csv(self.path_and_name, index = None, header = True)
+            
+        else:
+            messagebox.showinfo('Message', 'Please rename existing file and then click OK to continue. Do NOT click OK before renaming existing file!')
+            # Note an alternative would be to break out of loop upon clicking the ok and then starting the analysis again.
+            # In this case, clicking ok triggers the file to be written. If existing filename wasn't changed, it will be overwritten.
+            self.export_csv = self.fit_params_df.to_csv(self.path_and_name, index = None, header = True)
+
+#----------------------------------------------------------------------------------------------
+
+# Execute application
+# Create main page
+root = tk.Tk()
+b = Kd(root)
+root.mainloop()
